@@ -132,13 +132,19 @@ func run() error {
 	instrumented = auth.AuthMiddleware(instrumented)
 	instrumented = limiter.RateLimitMiddleware(instrumented)
 
-	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dispatch := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metrics" {
 			promHandler.ServeHTTP(w, r)
 			return
 		}
 		instrumented.ServeHTTP(w, r)
 	})
+
+	// CORS is the outermost wrapper around the dispatcher rather than a link in
+	// the chain above, because /metrics bypasses that chain entirely and a
+	// browser still needs the headers to read a scrape. Preflights are answered
+	// here, so they reach neither the authenticator nor the rate limiter.
+	handler := middleware.CORSMiddleware(cfg.CORSAllowedOrigins)(dispatch)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPPort,

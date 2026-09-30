@@ -25,6 +25,15 @@ tags:
 security:
   - ApiKeyAuth: []
 
+# A web client runs on its own origin and is refused the response by the
+# browser unless CORS_ALLOWED_ORIGINS permits it. Preflights are answered by the
+# server and carry no credentials; Retry-After is exposed so a client can pace
+# its retries.
+cors:
+  allowOrigins: ['*']  # configurable via CORS_ALLOWED_ORIGINS
+  exposedHeaders: [Retry-After, WWW-Authenticate]
+  allowedHeaders: [Content-Type, X-API-Key, Authorization]
+
 paths:
   /notes:
     get:

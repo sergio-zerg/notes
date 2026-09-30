@@ -16,7 +16,7 @@ internal/
     persistence/         pgx connection, goose migrations (embedded), postgres DAO + repository
     transport/http/      gorilla/mux handlers, router, health probe
     transport/grpc/      gRPC handler
-    transport/http/middleware/  logging, recovery, metrics, tracing, body limit, API keys, rate limit
+    transport/http/middleware/  logging, recovery, metrics, tracing, body limit, API keys, rate limit, CORS
     transport/grpc/middleware/  metrics, API keys, rate limit
     observability/       Prometheus metrics, OpenTelemetry tracer
 api/
@@ -79,6 +79,7 @@ All settings come from the environment, with defaults suitable for local develop
 | `RATE_LIMIT_ENABLED` | `true` | Turn per-client rate limiting off |
 | `RATE_LIMIT_RPS` | `20` | Sustained requests per second per client |
 | `RATE_LIMIT_BURST` | `40` | Extra requests allowed in a burst |
+| `CORS_ALLOWED_ORIGINS` | `*` | Browser origins allowed to read responses. Web clients only |
 | `TRACE_EXPORTER` | `stdout` | `stdout`, `otlp` or `none` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | Collector address when `TRACE_EXPORTER=otlp` |
 | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Fraction of root spans recorded, within [0,1] |
@@ -131,6 +132,37 @@ Each client address gets a token bucket refilling at `RATE_LIMIT_RPS` up to
 `RATE_LIMIT_BURST`. Exhausted clients receive `429` with a `Retry-After` header
 over REST and `ResourceExhausted` over gRPC. Buckets idle for longer than ten
 minutes are swept.
+
+## 🌐 CORS
+
+Browsers enforce same-origin policy, so a web client served from its own origin
+is refused the response unless the server opts it in. A Flutter web build hits
+this immediately: `flutter run -d chrome` serves on a different port than the
+API, and the browser blocks every response before the app sees it.
+
+CORS is off the critical path for everyone else. Native iOS and Android clients
+are not browsers, requests without an `Origin` header are untouched, and the
+gRPC transport has no such concept.
+
+```bash
+# Development: the default wildcard already covers Flutter's random dev port
+CORS_ALLOWED_ORIGINS='*'
+
+# Production: pin what actually serves your client
+CORS_ALLOWED_ORIGINS='https://notes.example.com'
+```
+
+Preflights are answered by the middleware itself and never reach the
+authenticator or the rate limiter — they carry no credentials, and counting them
+would spend a client's budget on the handshake. `Retry-After` and
+`WWW-Authenticate` are listed in `Access-Control-Expose-Headers`, without which
+a browser hides them and a rate-limited client cannot pace its retries.
+`Vary: Origin` is always set so a shared cache cannot hand one origin a response
+computed for another.
+
+Entries must be bare origins — scheme, host, optional port. A trailing slash or
+a path is rejected at startup, because the browser compares the entry against
+the `Origin` header verbatim and such a value would never match.
 
 ## 🔌 API
 

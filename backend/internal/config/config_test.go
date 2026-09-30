@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +145,78 @@ func TestValidateRejectsSampleRateOutsideUnitRange(t *testing.T) {
 	}
 }
 
+// A wildcard is the default so a web client works without configuration, but a
+// deployment that lists origins must be able to express them.
+func TestCORSAllowedOrigins(t *testing.T) {
+	t.Setenv("API_KEYS", "key")
+
+	t.Run("defaults to the wildcard", func(t *testing.T) {
+		unsetEnv(t, "CORS_ALLOWED_ORIGINS")
+
+		cfg := Load()
+		if len(cfg.CORSAllowedOrigins) != 1 || cfg.CORSAllowedOrigins[0] != "*" {
+			t.Errorf("CORSAllowedOrigins = %v, want [*]", cfg.CORSAllowedOrigins)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("Validate() = %v, want nil for the wildcard default", err)
+		}
+	})
+
+	t.Run("parses a comma-separated list", func(t *testing.T) {
+		t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:8081, https://app.example.com")
+
+		cfg := Load()
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("Validate() = %v, want nil", err)
+		}
+		want := []string{"http://localhost:8081", "https://app.example.com"}
+		if len(cfg.CORSAllowedOrigins) != len(want) {
+			t.Fatalf("CORSAllowedOrigins = %v, want %v", cfg.CORSAllowedOrigins, want)
+		}
+		for i, origin := range want {
+			if cfg.CORSAllowedOrigins[i] != origin {
+				t.Errorf("CORSAllowedOrigins[%d] = %q, want %q", i, cfg.CORSAllowedOrigins[i], origin)
+			}
+		}
+	})
+
+	t.Run("a port is optional", func(t *testing.T) {
+		t.Setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
+
+		if err := Load().Validate(); err != nil {
+			t.Errorf("Validate() = %v, want nil", err)
+		}
+	})
+}
+
+// A malformed origin silently never matches the header a browser sends, which
+// the client sees only as an opaque network error. Catching it at startup turns
+// that into a clear failure.
+func TestValidateRejectsMalformedCORSOrigins(t *testing.T) {
+	t.Setenv("API_KEYS", "key")
+
+	for _, origin := range []string{
+		"localhost:8081",             // no scheme
+		"ftp://localhost:8081",       // unsupported scheme
+		"http://",                    // no host
+		"http://localhost:8080/",     // trailing slash never matches verbatim
+		"http://localhost:8080/api",  // path is not part of an origin
+		"http://user@localhost:8080", // credentials have no place here
+	} {
+		t.Run(origin, func(t *testing.T) {
+			t.Setenv("CORS_ALLOWED_ORIGINS", origin)
+
+			err := Load().Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want an error for CORS_ALLOWED_ORIGINS=%s", origin)
+			}
+			if !contains(err.Error(), "CORS_ALLOWED_ORIGINS") {
+				t.Errorf("error = %v, want it to mention CORS_ALLOWED_ORIGINS", err)
+			}
+		})
+	}
+}
+
 func TestShutdownTimeout(t *testing.T) {
 	t.Setenv("API_KEYS", "key")
 
@@ -210,4 +283,19 @@ func TestValidateRejectsNonPositiveShutdownTimeout(t *testing.T) {
 
 func contains(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
+}
+
+// unsetEnv removes a variable for the duration of the test. t.Setenv only sets
+// it, and an empty value is not the same as an absent one: getEnv treats a
+// present-but-empty variable as a deliberate override.
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	if original, ok := os.LookupEnv(key); ok {
+		t.Cleanup(func() { _ = os.Setenv(key, original) })
+	} else {
+		t.Cleanup(func() { _ = os.Unsetenv(key) })
+	}
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,13 @@ type Config struct {
 	RateLimitEnabled bool
 	RateLimitRPS     float64
 	RateLimitBurst   int
+
+	// CORSAllowedOrigins are the browser origins permitted to read responses.
+	// The single entry "*" allows any origin, which is convenient while a
+	// Flutter web client picks a random dev-server port, and too loose for a
+	// deployment. Native clients ignore CORS entirely, so this only affects
+	// web.
+	CORSAllowedOrigins []string
 
 	TraceExporter   string
 	OTLPEndpoint    string
@@ -54,6 +62,12 @@ func Load() *Config {
 		RateLimitRPS:     getEnvFloat("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:   getEnvInt("RATE_LIMIT_BURST", 40),
 
+		// "*" rather than an empty default: a browser client on another origin
+		// gets no response at all without these headers, so an empty list would
+		// break every web client by default. Pinning is one variable away and
+		// Validate rejects the shapes that would silently fail to match.
+		CORSAllowedOrigins: splitList(getEnv("CORS_ALLOWED_ORIGINS", "*")),
+
 		TraceExporter:   strings.ToLower(getEnv("TRACE_EXPORTER", "stdout")),
 		OTLPEndpoint:    getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
 		TraceSampleRate: getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1.0),
@@ -76,6 +90,15 @@ func (c *Config) Validate() error {
 		}
 		if c.RateLimitBurst < 1 {
 			return fmt.Errorf("RATE_LIMIT_BURST must be at least 1, got %d", c.RateLimitBurst)
+		}
+	}
+
+	// A malformed origin is worse than none: it never matches the header a
+	// browser sends, and the failure surfaces as an opaque network error in the
+	// client's console rather than as a startup complaint.
+	for _, origin := range c.CORSAllowedOrigins {
+		if err := validateOrigin(origin); err != nil {
+			return fmt.Errorf("CORS_ALLOWED_ORIGINS contains an invalid entry: %w", err)
 		}
 	}
 
@@ -106,6 +129,32 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// validateOrigin checks that an entry is either the "*" wildcard or an origin
+// in its serialised form: scheme, host and optional port, and nothing else. A
+// trailing slash or a path is rejected because the browser compares the entry
+// against the Origin header verbatim, so "http://localhost:8080/" would never
+// match.
+func validateOrigin(origin string) error {
+	if origin == "*" {
+		return nil
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid origin: %w", origin, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("%q must start with http:// or https://", origin)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("%q is missing a host", origin)
+	}
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return fmt.Errorf("%q must be a bare origin without a path, query or credentials", origin)
+	}
+	return nil
 }
 
 // splitList parses a comma-separated environment value, dropping blank entries
