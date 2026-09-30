@@ -263,14 +263,45 @@ export round trip never lands on the request that produced the span.
 task test:unit          # mocked repository, no database
 task test:integration   # real Postgres, build tag "integration"
 task proto:gen          # regenerate protobuf code after editing notes.proto
-task ci                 # fmt + lint + unit + integration + docker build
+task vendor             # go mod tidy + go mod vendor
+task ci                 # fmt + lint + vendor:check + unit + integration + docker build
 ```
+
+## 🔐 Dependency Security
+
+Dependencies are committed to `vendor/`, so a build needs no network access and
+picks up exactly the reviewed tree. `task ci` fails if `vendor/` drifts from
+`go.mod`.
+
+`govulncheck ./...` runs as its own CI step. It reports only vulnerabilities
+whose affected symbols are actually reachable from the code, which is what
+separates a real exposure from a scary version number in a lockfile:
+
+```bash
+govulncheck ./...
+```
+
+It has already earned its place here. `google.golang.org/grpc v1.84.0` carries
+[GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443) (CVE-2026-84445), a panic
+in the xDS server routing interceptor that terminates the process when a request
+arrives without `:authority` or `Host`. This service does not configure xDS, so
+the panic path itself is unreachable — but govulncheck still traced the call
+graph through `grpc.Server.Serve` to `transport.http2Server.HandleStreams` and
+reported the module as affected, which is the conservative answer worth acting
+on. The pin in `go.mod` moves to the commit that carries the fix.
 
 Integration tests are behind the `integration` tag so `go test ./...` works without a database. They read connection settings from the environment and skip when unset:
 
 ```bash
 NOTES_TEST_DB_HOST=localhost go test -tags=integration -v ./internal/
 ```
+
+## 📦 Dependencies
+
+`vendor/` is committed. A build therefore needs no network access and uses
+exactly the tree that was reviewed, which matters most for the Docker image.
+Refresh it with `task vendor` after changing imports, and let `task ci`'s
+`vendor:check` catch a forgotten refresh.
 
 ## 🐳 Docker
 

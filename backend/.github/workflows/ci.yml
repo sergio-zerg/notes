@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     env:
       # Consumed by the integration test, which is skipped when unset.
@@ -40,8 +42,11 @@ jobs:
           cache: true
 
       - name: Check gofmt
+        # vendor/ is excluded: it holds third-party code at its upstream
+        # formatting, and reformatting it would make `go mod vendor` produce a
+        # dirty tree on the next refresh.
         run: |
-          unformatted="$(gofmt -l . | grep -v '^$' || true)"
+          unformatted="$(gofmt -l . | grep -v '^$' | grep -v '^vendor/' || true)"
           if [ -n "$unformatted" ]; then
             echo "::error::These files need gofmt:"
             echo "$unformatted"
@@ -55,6 +60,16 @@ jobs:
         uses: golangci-lint/golangci-lint-action@v6
         with:
           version: latest
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # Separate from `task ci` because it needs the database-free module graph
+      # only, and a reachable vulnerability should fail the build on its own
+      # signal rather than as part of a long pipeline. GO-2026-6443 is the
+      # reason this step exists: it was reachable through grpc.Server.Serve.
+      - name: Scan for reachable vulnerabilities
+        run: govulncheck ./...
 
       - name: Run CI Pipeline
         run: task ci

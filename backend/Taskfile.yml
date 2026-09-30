@@ -45,6 +45,21 @@ tasks:
         go test -tags=integration -v -race ./internal/
       - task: db:down
 
+  vendor:
+    desc: Refresh go.mod, go.sum and the committed vendor directory
+    cmds:
+      - go mod tidy
+      - go mod vendor
+
+  vendor:check:
+    desc: Verify vendor/ matches go.mod (CI gate)
+    cmds:
+      - go mod verify
+      # Downloads every module and rebuilds the tree, so a drift between
+      # go.mod and vendor/ fails here instead of on a machine without network
+      # access — which is exactly where vendoring is supposed to help.
+      - go mod vendor && git diff --exit-code -- vendor go.mod go.sum
+
   proto:gen:
     desc: Regenerate protobuf and gRPC code from api/proto/notes.proto
     cmds:
@@ -72,12 +87,18 @@ tasks:
   fmt:
     desc: Format the code
     cmds:
-      - gofmt -w .
+      # vendor/ is excluded for the same reason as fmt:check: `go mod vendor`
+      # regenerates it, so formatting it here would only be undone on the next
+      # `task vendor`.
+      - gofmt -w -l . | grep -v '^$' | grep -v '^vendor/' | xargs -r gofmt -w
 
   fmt:check:
     desc: Verify formatting (CI gate)
     cmds:
-      - test -z "$(gofmt -l . | grep -v '^$' | tee /dev/stderr)"
+      # vendor/ is skipped on purpose: it is third-party code kept at its
+      # upstream formatting, and rewriting it would make `task vendor` dirty
+      # the tree again on the next refresh.
+      - test -z "$(gofmt -l . | grep -v '^$' | grep -v '^vendor/' | tee /dev/stderr)"
 
   lint:
     desc: Run static analysis (requires golangci-lint)
@@ -89,6 +110,7 @@ tasks:
     cmds:
       - task: fmt:check
       - task: lint
+      - task: vendor:check
       - task: test:unit
       - task: test:integration
       - task: build:docker
