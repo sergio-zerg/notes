@@ -1,12 +1,60 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: Notes API
-  description: A simple CRUD API for managing notes.
-  version: 1.0.0
+  description: |
+    A simple CRUD API for managing notes.
+
+    Field validation (title length and presence, content presence) is enforced
+    by the domain layer and is identical across the REST and gRPC transports.
+
+    The notes endpoints require an API key and are rate limited per client
+    address. The system endpoints are unauthenticated so that orchestrator
+    probes and Prometheus scrapes need no credential.
+  version: 3.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: notes
+    description: Note CRUD operations
+  - name: system
+    description: Health and observability endpoints
+
+security:
+  - ApiKeyAuth: []
+
 paths:
   /notes:
     get:
-      summary: List all notes
+      tags: [notes]
+      summary: List notes
+      description: |
+        Returns notes ordered by ascending id, which makes OFFSET paging stable:
+        consecutive pages neither repeat nor skip records. The result is capped
+        at 200 entries per page.
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive substring match against title and content.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Page size. Defaults to 50, capped at 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          description: Number of records to skip. Capped at 200.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: A list of notes
@@ -16,8 +64,16 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
     post:
-      summary: Create a new note
+      tags: [notes]
+      summary: Create a note
       requestBody:
         required: true
         content:
@@ -31,14 +87,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /notes/{id}:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
+      - $ref: '#/components/parameters/NoteId'
+
     get:
+      tags: [notes]
       summary: Get a note by ID
       responses:
         '200':
@@ -47,10 +112,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Note not found
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
     put:
-      summary: Update a note
+      tags: [notes]
+      summary: Replace a note's content
+      description: |
+        Updates title and content of an existing note in a single statement, so
+        created_at is preserved and updated_at advances.
       requestBody:
         required: true
         content:
@@ -64,34 +142,212 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
     delete:
+      tags: [notes]
       summary: Delete a note
       responses:
         '204':
           description: Note deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /healthz:
+    get:
+      tags: [system]
+      summary: Readiness probe
+      security: []
+      description: |
+        Returns 200 only when the service can reach its database. This endpoint
+        is used by the container healthcheck and the orchestrator, so it
+        requires no API key and a database outage surfaces as 503.
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '503':
+          description: Service is not ready
+
+  /metrics:
+    get:
+      tags: [system]
+      summary: Prometheus metrics
+      security: []
+      description: |
+        Exposes counters and histograms in the Prometheus text format. Requires
+        no API key, and is served outside the instrumented middleware chain so
+        that a scrape is not itself counted as application traffic.
+
+        Request series are labelled with the route template (for example
+        /notes/{id:[0-9]+}) rather than the concrete path, so per-id traffic
+        does not create unbounded cardinality.
+      responses:
+        '200':
+          description: Metrics in Prometheus exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Shared secret accepted on the notes endpoints. `Authorization: Bearer
+        <key>` works as well. Configured through the API_KEYS environment
+        variable; several keys may be listed, which allows rotation.
+
+  parameters:
+    NoteId:
+      name: id
+      in: path
+      required: true
+      description: Numeric note identifier.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  responses:
+    Unauthorized:
+      description: |
+        The request carried no API key, or one that is not configured. The
+        response includes a WWW-Authenticate challenge.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: 'Bearer realm="notes"'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: valid API key required
+
+    TooManyRequests:
+      description: |
+        The client exceeded its rate limit budget. Retry-After states how long
+        to wait before the next attempt.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            description: Seconds to wait before retrying.
+          example: 2
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: rate limit exceeded
+
+    BadRequest:
+      description: Malformed request or failed domain validation
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: 'invalid input provided: title must be at least 3 characters'
+
+    NotFound:
+      description: No note with the given ID
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: note not found
+
+    PayloadTooLarge:
+      description: Request body exceeds the 1 MiB limit
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: request body too large
+
+    InternalError:
+      description: |
+        Unexpected server-side failure. The response is intentionally generic;
+        details are written to the structured log, not to the client.
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: internal server error
+
   schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Short machine-readable reason.
+
     Note:
       type: object
+      required: [id, title, content, created_at, updated_at]
       properties:
         id:
           type: integer
+          format: int64
+          example: 1
         title:
           type: string
+          minLength: 3
+          maxLength: 100
+          example: My Note Title
         content:
           type: string
+          example: Note content goes here...
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
     NoteRequest:
       type: object
+      required: [title, content]
       properties:
         title:
           type: string
+          minLength: 3
+          maxLength: 100
+          description: |
+            Length is counted in runes, so multi-byte scripts are measured by
+            visible characters.
+          example: My Note Title
         content:
           type: string
-      required:
-        - title
+          minLength: 1
+          example: Note content goes here...

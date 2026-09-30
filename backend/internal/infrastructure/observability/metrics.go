@@ -40,10 +40,8 @@ var (
 		[]string{"method"},
 	)
 
-	NotesCreatedTotal = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "notes_created_total",
-			Help: "Total number of notes created",
-		},
-	)
+	// Note: a business counter such as notes_created_total is deliberately
+	// absent. Incrementing it would require the application layer to import
+	// this package, inverting the Clean Architecture dependency direction.
+	// Creations are already observable as http_requests_total{status="201"}.
 )

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Consumed by the integration test, which is skipped when unset.
+      # The database itself is started by `task test:integration` through
+      # docker compose; declaring it here as a `services:` container as well
+      # would collide over host port 5432.
+      NOTES_TEST_DB_HOST: localhost
+      NOTES_TEST_DB_PORT: 5432
+      NOTES_TEST_DB_USER: postgres
+      NOTES_TEST_DB_PASS: password
+      NOTES_TEST_DB_NAME: notes_db
+
+      # The HTTP and gRPC middleware tests build the authenticator directly, so
+      # they do not read API_KEYS. The integration test does not either. This is
+      # set so that any test that does go through config.Load() starts cleanly.
+      API_KEYS: ci-test-key
+      RATE_LIMIT_RPS: "1000"
+      RATE_LIMIT_BURST: "2000"
+      TRACE_EXPORTER: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Must satisfy the "go" directive in go.mod.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          unformatted="$(gofmt -l . | grep -v '^$' || true)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Install Task
+        run: sh -c "$(curl -fsSL https://taskfile.dev/install.sh)"
+
+      - name: Install golangci-lint
+        uses: golangci-lint/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: Run CI Pipeline
+        run: task ci

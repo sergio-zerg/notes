@@ -37,7 +37,12 @@ message DeleteNoteResponse {
   bool success = 1;
 }
 
-message ListNotesRequest {}
+// Empty fields fall back to server defaults (limit=50); limit is capped at 200.
+message ListNotesRequest {
+  string query = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
 
 message ListNotesResponse {
   repeated Note notes = 1;

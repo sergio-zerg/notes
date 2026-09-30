@@ -1,0 +1,24 @@
+# Collector used by the README's OTLP example.
+#
+#   docker run --rm -p 4317:4317 \
+#     -v ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml \
+#     otel/opentelemetry-collector-contrib:latest
+#
+# It prints spans to its own stdout, which is enough to confirm the exporter
+# works. A real deployment would export to a tracing backend instead.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]

@@ -1,1 +1,14 @@
+# Build output
 notes_app
+notes-app
+/out/
+/dist/
+
+# Go test artifacts
+*.out
+coverage.*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

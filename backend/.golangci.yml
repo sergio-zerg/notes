@@ -1,0 +1,40 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - misspell
+    - revive
+    - unconvert
+    - whitespace
+  settings:
+    revive:
+      rules:
+        # The default revive rule set includes `exported`, which demands a doc
+        # comment on every exported symbol. That is a style preference rather
+        # than a defect, and the handlers it flags are self-describing
+        # (Create, Get, Update, Delete, List on NoteHandler), so it is off here
+        # to keep the linter output about real problems.
+        - name: exported
+          disabled: true
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: receiver-naming
+        - name: time-naming
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Generated protobuf code is not hand-maintained.
+    - path: api/proto/
+      linters:
+        - unconvert
+        - whitespace

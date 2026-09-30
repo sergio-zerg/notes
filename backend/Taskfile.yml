@@ -1,0 +1,105 @@
+version: '3'
+
+vars:
+  BINARY_NAME: notes_app
+  DOCKER_IMAGE: notes-app:latest
+  # Test image is built separately from the runtime image.
+  DOCKER_TEST_IMAGE: notes-app-test:latest
+
+tasks:
+  default:
+    cmds:
+      - task: ci
+
+  run:
+    desc: Start the service against the compose database
+    cmds:
+      - task: db:up
+      # API_KEYS is required: the service refuses to start without it unless
+      # ALLOW_INSECURE_AUTH is set. Override with `task run API_KEYS=...`.
+      - API_KEYS={{.API_KEYS | default "dev-secret-key"}} DB_HOST=localhost go run ./cmd/api
+
+  test:unit:
+    desc: Run unit tests (no database required)
+    cmds:
+      - go test -v -race ./...
+
+  db:up:
+    desc: Start Postgres for local integration testing
+    cmds:
+      - docker compose up -d db
+    sources:
+      - docker-compose.yml
+    run: once
+
+  test:integration:
+    desc: Run integration tests against Postgres
+    cmds:
+      - task: db:up
+      - >-
+        NOTES_TEST_DB_HOST=localhost
+        NOTES_TEST_DB_PORT=5432
+        NOTES_TEST_DB_USER=postgres
+        NOTES_TEST_DB_PASS=password
+        NOTES_TEST_DB_NAME=notes_db
+        go test -tags=integration -v -race ./internal/
+      - task: db:down
+
+  proto:gen:
+    desc: Regenerate protobuf and gRPC code from api/proto/notes.proto
+    cmds:
+      - >-
+        protoc --go_out=. --go_opt=paths=source_relative
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative
+        api/proto/notes.proto
+      - gofmt -w api/proto
+
+  build:
+    desc: Build the binary
+    cmds:
+      - go build -o {{.BINARY_NAME}} ./cmd/api
+
+  build:docker:
+    desc: Build the runtime Docker image
+    cmds:
+      - docker build -t {{.DOCKER_IMAGE}} .
+
+  build:docker:test:
+    desc: Build the test Docker image
+    cmds:
+      - docker build -f Dockerfile.test -t {{.DOCKER_TEST_IMAGE}} .
+
+  fmt:
+    desc: Format the code
+    cmds:
+      - gofmt -w .
+
+  fmt:check:
+    desc: Verify formatting (CI gate)
+    cmds:
+      - test -z "$(gofmt -l . | grep -v '^$' | tee /dev/stderr)"
+
+  lint:
+    desc: Run static analysis (requires golangci-lint)
+    cmds:
+      - golangci-lint run
+
+  ci:
+    desc: Run the full CI pipeline
+    cmds:
+      - task: fmt:check
+      - task: lint
+      - task: test:unit
+      - task: test:integration
+      - task: build:docker
+
+  db:down:
+    desc: Stop Postgres and drop its volume
+    cmds:
+      - docker compose down -v
+
+  clean:
+    desc: Remove build artifacts and coverage output
+    cmds:
+      - rm -f {{.BINARY_NAME}}
+      - rm -f coverage.out

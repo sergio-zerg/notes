@@ -342,8 +342,12 @@ func (x *DeleteNoteResponse) GetSuccess() bool {
 	return false
 }
 
+// Empty fields fall back to server defaults (limit=50); limit is capped at 200.
 type ListNotesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -376,6 +380,27 @@ func (x *ListNotesRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListNotesRequest.ProtoReflect.Descriptor instead.
 func (*ListNotesRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_notes_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListNotesRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *ListNotesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListNotesRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
 }
 
 type ListNotesResponse struct {
@@ -447,8 +472,11 @@ const file_api_proto_notes_proto_rawDesc = "" +
 	"\x11DeleteNoteRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\".\n" +
 	"\x12DeleteNoteResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x12\n" +
-	"\x10ListNotesRequest\"6\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"V\n" +
+	"\x10ListNotesRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"6\n" +
 	"\x11ListNotesResponse\x12!\n" +
 	"\x05notes\x18\x01 \x03(\v2\v.notes.NoteR\x05notes2\xa9\x02\n" +
 	"\vNoteService\x123\n" +

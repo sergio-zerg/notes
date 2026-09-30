@@ -1,10 +1,7 @@
 # Build Stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-# Install build dependencies for go-sqlite3
-RUN apk add --no-cache gcc musl-dev
-
-WORKDIR /app
+WORKDIR /src
 
 # Copy go mod files first to leverage Docker cache
 COPY go.mod go.sum ./
@@ -13,22 +10,25 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -o notes_app ./cmd/api/main.go
+# Build the application.
+# CGO is not required: pgx is pure Go and the driver is database/sql based.
+# Migration SQL files are embedded into the binary via go:embed, so nothing
+# needs to be copied alongside the executable.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/notes_app ./cmd/api
 
 # Final Stage
 FROM alpine:latest
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates
+# ca-certificates: outbound TLS. curl: container healthcheck.
+RUN apk add --no-cache ca-certificates curl
 
 # Create a non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/notes_app .
+COPY --from=builder /out/notes_app .
 
 # Ensure the binary is executable
 RUN chmod +x ./notes_app

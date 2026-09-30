@@ -1,19 +1,55 @@
-version: '3.8'
-
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: notes_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume keeps the schema (goose_migrations table included) across restarts.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notes_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   notes-app:
     build: .
     ports:
       - "8080:8080"
       - "50051:50051"
-    volumes:
-      - ./notes.db:/root/notes.db
     environment:
-      - TZ=UTC
+      HTTP_PORT: ":8080"
+      GRPC_PORT: ":50051"
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: notes_db
+      # Comma-separated shared secrets for the notes endpoints. /healthz and
+      # /metrics stay open so probes and scrapes need no credential.
+      # Default to a development key; override API_KEYS for anything real.
+      API_KEYS: "${API_KEYS:-dev-secret-key-change-me}"
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_RPS: "20"
+      RATE_LIMIT_BURST: "40"
+      TRACE_EXPORTER: "${TRACE_EXPORTER:-stdout}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
+      # /healthz performs a real database ping; /metrics would report
+      # healthy even when the service is degraded.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  pgdata:
