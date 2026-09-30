@@ -7,13 +7,14 @@ The project follows **Clean Architecture** and **Domain-Driven Design (DDD)** pr
 
 - **Domain Layer**: Pure business logic and entities. No dependencies.
 - **Application Layer**: Orchestrates use cases (Services).
-- **Infrastructure Layer**: Implementation details (SQLite, HTTP Transport).
+- **Infrastructure Layer**: Implementation details (SQLite, HTTP/gRPC Transport, Observability).
 - **Principles**: SOLID, KISS, YAGNI.
 
 ## 🛠 Tech Stack
 - **Language**: Go 1.23+
 - **Database**: SQLite (via `go-sqlite3`)
-- **Routing**: Gorilla Mux
+- **Transport**: REST (Gorilla Mux) & gRPC (Protobuf)
+- **Observability**: Prometheus (Metrics) & OpenTelemetry (Tracing)
 - **API Spec**: OpenAPI 3.0
 - **Testing**: Testify (Mock/Assert)
 
@@ -33,10 +34,13 @@ go mod tidy
 ```bash
 go run cmd/api/main.go
 ```
-The server will start on `http://localhost:8080`.
+- HTTP Server: `http://localhost:8080`
+- gRPC Server: `localhost:50051`
+- Metrics: `http://localhost:8080/metrics`
 
 ## 🔌 API Endpoints
 
+### REST API
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|---------------|----------|
 | `GET` | `/notes` | List all notes | None | `[Note]` |
@@ -44,6 +48,19 @@ The server will start on `http://localhost:8080`.
 | `GET` | `/notes/{id}` | Get note by ID | None | `Note` (404 if not found) |
 | `PUT` | `/notes/{id}` | Update a note | `{title, content}` | `Note` |
 | `DELETE` | `/notes/{id}` | Delete a note | None | 204 No Content |
+
+### gRPC API
+Service: `notes.NoteService`
+- `CreateNote(CreateNoteRequest) -> Note`
+- `GetNote(GetNoteRequest) -> Note`
+- `UpdateNote(UpdateNoteRequest) -> Note`
+- `DeleteNote(DeleteNoteRequest) -> DeleteNoteResponse`
+- `ListNotes(ListNotesRequest) -> ListNotesResponse`
+
+**Example gRPC call using grpcurl:**
+```bash
+grpcurl -plaintext -d '{"title": "Hello", "content": "World"}' localhost:50051 notes.NoteService/CreateNote
+```
 
 ### Note Schema
 ```json
@@ -60,6 +77,15 @@ The server will start on `http://localhost:8080`.
 Run unit tests for the application layer:
 ```bash
 go test ./internal/application/...
+```
+Run integration tests (real SQLite):
+```bash
+go test ./internal/integration_test.go
+```
+
+## 🐳 Docker
+```bash
+docker-compose up -d --build
 ```
 
 ## 📜 License

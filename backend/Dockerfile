@@ -19,16 +19,25 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o notes_app ./cmd/api/main.go
 # Final Stage
 FROM alpine:latest
 
-# Install runtime dependencies for SQLite
+# Install runtime dependencies
 RUN apk add --no-cache ca-certificates
+
+# Create a non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /root/
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/notes_app .
 
-# Expose the application port
-EXPOSE 8080
+# Ensure the binary is executable
+RUN chmod +x ./notes_app
+
+# Run as non-root user
+USER appuser
+
+# Expose the application ports
+EXPOSE 8080 50051
 
 # Run the application
 CMD ["./notes_app"]

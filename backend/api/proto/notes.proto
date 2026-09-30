@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package notes;
+
+option go_package = "notes/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+message Note {
+  int64 id = 1;
+  string title = 2;
+  string content = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateNoteRequest {
+  string title = 1;
+  string content = 2;
+}
+
+message GetNoteRequest {
+  int64 id = 1;
+}
+
+message UpdateNoteRequest {
+  int64 id = 1;
+  string title = 2;
+  string content = 3;
+}
+
+message DeleteNoteRequest {
+  int64 id = 1;
+}
+
+message DeleteNoteResponse {
+  bool success = 1;
+}
+
+message ListNotesRequest {}
+
+message ListNotesResponse {
+  repeated Note notes = 1;
+}
+
+service NoteService {
+  rpc CreateNote(CreateNoteRequest) returns (Note);
+  rpc GetNote(GetNoteRequest) returns (Note);
+  rpc UpdateNote(UpdateNoteRequest) returns (Note);
+  rpc DeleteNote(DeleteNoteRequest) returns (DeleteNoteResponse);
+  rpc ListNotes(ListNotesRequest) returns (ListNotesResponse);
+}
