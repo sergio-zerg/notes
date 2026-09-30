@@ -2,16 +2,19 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: notes_db
+      # Credentials come from .env so the password is defined in exactly one
+      # place and never has to be committed. Changing them after the first
+      # `up` has no effect: the existing pgdata volume keeps the old ones.
+      POSTGRES_USER: "${DB_USER:-postgres}"
+      POSTGRES_PASSWORD: "${DB_PASS:-password}"
+      POSTGRES_DB: "${DB_NAME:-notes_db}"
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       # Named volume keeps the schema (goose_migrations table included) across restarts.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notes_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-notes_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,11 +27,15 @@ services:
     environment:
       HTTP_PORT: ":8080"
       GRPC_PORT: ":50051"
+      # DB_HOST stays the compose service name and DB_PORT the image's own
+      # 5432: inside the network the app resolves the peer by service name, so
+      # honouring the host-side DB_PORT from .env here would point at a port
+      # nothing listens on. DB_PORT only moves the published port below.
       DB_HOST: db
       DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASS: password
-      DB_NAME: notes_db
+      DB_USER: "${DB_USER:-postgres}"
+      DB_PASS: "${DB_PASS:-password}"
+      DB_NAME: "${DB_NAME:-notes_db}"
       # Comma-separated shared secrets for the notes endpoints. /healthz and
       # /metrics stay open so probes and scrapes need no credential.
       # Default to a development key; override API_KEYS for anything real.
@@ -38,6 +45,7 @@ services:
       RATE_LIMIT_BURST: "40"
       TRACE_EXPORTER: "${TRACE_EXPORTER:-stdout}"
       OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+      SHUTDOWN_TIMEOUT: "${SHUTDOWN_TIMEOUT:-10s}"
     depends_on:
       db:
         condition: service_healthy

@@ -30,6 +30,12 @@ type Config struct {
 	TraceExporter   string
 	OTLPEndpoint    string
 	TraceSampleRate float64
+
+	// ShutdownTimeout bounds the graceful shutdown of both transports. It is
+	// captured here, alongside every other setting, so that the whole
+	// configuration is one immutable snapshot: mutating the environment after
+	// startup must not silently change the behaviour of a running process.
+	ShutdownTimeout time.Duration
 }
 
 func Load() *Config {
@@ -51,6 +57,8 @@ func Load() *Config {
 		TraceExporter:   strings.ToLower(getEnv("TRACE_EXPORTER", "stdout")),
 		OTLPEndpoint:    getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
 		TraceSampleRate: getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1.0),
+
+		ShutdownTimeout: getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
 }
 
@@ -83,12 +91,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("OTEL_TRACES_SAMPLER_ARG must be within [0,1], got %v", c.TraceSampleRate)
 	}
 
-	return nil
-}
+	// A zero or negative budget would make the context expire before the
+	// signal is even delivered, turning a graceful shutdown into an immediate
+	// kill of every in-flight request.
+	if c.ShutdownTimeout <= 0 {
+		return fmt.Errorf("SHUTDOWN_TIMEOUT must be positive, got %v", c.ShutdownTimeout)
+	}
 
-// ShutdownTimeout bounds the graceful shutdown of both transports.
-func (c *Config) ShutdownTimeout() time.Duration {
-	return getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second)
+	return nil
 }
 
 func getEnv(key, fallback string) string {

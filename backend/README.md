@@ -70,7 +70,7 @@ All settings come from the environment, with defaults suitable for local develop
 | `HTTP_PORT` | `:8080` | REST listen address |
 | `GRPC_PORT` | `:50051` | gRPC listen address |
 | `DB_HOST` | `localhost` | Postgres host |
-| `DB_PORT` | `5432` | Postgres port |
+| `DB_PORT` | `5432` | Postgres port. Under Compose this moves the published host port only |
 | `DB_USER` | `postgres` | Postgres user |
 | `DB_PASS` | `password` | Postgres password |
 | `DB_NAME` | `notes_db` | Database name |
@@ -85,8 +85,31 @@ All settings come from the environment, with defaults suitable for local develop
 | `SHUTDOWN_TIMEOUT` | `10s` | Grace period for in-flight requests |
 
 Configuration is validated at startup: an unusable combination — no API keys, a
-non-positive rate limit, an unknown exporter, a sample ratio outside [0,1] —
-fails immediately instead of on the first request.
+non-positive rate limit, an unknown exporter, a sample ratio outside [0,1], a
+non-positive shutdown budget — fails immediately instead of on the first
+request.
+
+### Using a `.env` file
+
+`.env.example` lists every variable with a short explanation. Copy it and edit:
+
+```bash
+cp .env.example .env
+docker compose up -d          # Compose substitutes ${VAR} from .env
+```
+
+`.env` is gitignored, so real secrets stay out of commits; `.env.example` is
+tracked and safe to share. Note the scope, it is narrower than it looks:
+
+- `docker compose up` reads `.env` automatically, and nothing else does.
+- `go run ./cmd/api` does **not** read it. The application only calls
+  `os.Getenv`, so for a host run use `set -a; . ./.env; set +a`.
+- CI has its own `env` block in `.github/workflows/ci.yml` and ignores `.env`.
+
+`DB_USER`, `DB_PASS` and `DB_NAME` feed both the Postgres container and the
+application, so credentials are defined once. `DB_PORT` moves only the
+published host port: inside the Compose network the app still reaches the
+database on the image's own 5432, by service name.
 
 ## 🔐 Authentication
 

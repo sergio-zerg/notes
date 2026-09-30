@@ -145,15 +145,66 @@ func TestValidateRejectsSampleRateOutsideUnitRange(t *testing.T) {
 }
 
 func TestShutdownTimeout(t *testing.T) {
+	t.Setenv("API_KEYS", "key")
+
+	t.Run("parsed from the environment", func(t *testing.T) {
+		t.Setenv("SHUTDOWN_TIMEOUT", "45s")
+
+		if got := Load().ShutdownTimeout; got != 45*time.Second {
+			t.Errorf("ShutdownTimeout = %v, want 45s", got)
+		}
+	})
+
+	t.Run("unparseable value falls back to the default", func(t *testing.T) {
+		t.Setenv("SHUTDOWN_TIMEOUT", "nonsense")
+
+		if got := Load().ShutdownTimeout; got != 10*time.Second {
+			t.Errorf("ShutdownTimeout = %v, want the 10s default", got)
+		}
+	})
+
+	t.Run("defaults to 10s when unset", func(t *testing.T) {
+		t.Setenv("SHUTDOWN_TIMEOUT", "")
+
+		if got := Load().ShutdownTimeout; got != 10*time.Second {
+			t.Errorf("ShutdownTimeout = %v, want the 10s default", got)
+		}
+	})
+}
+
+// Load must capture the whole configuration, including the shutdown budget:
+// reading the environment later would let an already-running process change
+// behaviour underneath the operator who set it.
+func TestLoadSnapshotsShutdownTimeout(t *testing.T) {
+	t.Setenv("API_KEYS", "key")
 	t.Setenv("SHUTDOWN_TIMEOUT", "45s")
 
-	if got := Load().ShutdownTimeout(); got != 45*time.Second {
-		t.Errorf("ShutdownTimeout() = %v, want 45s", got)
-	}
+	cfg := Load()
 
-	t.Setenv("SHUTDOWN_TIMEOUT", "nonsense")
-	if got := Load().ShutdownTimeout(); got != 10*time.Second {
-		t.Errorf("ShutdownTimeout() = %v, want the 10s default", got)
+	t.Setenv("SHUTDOWN_TIMEOUT", "1s")
+
+	if cfg.ShutdownTimeout != 45*time.Second {
+		t.Errorf("ShutdownTimeout = %v after the env changed, want the 45s captured at Load", cfg.ShutdownTimeout)
+	}
+}
+
+// A non-positive budget would expire the shutdown context before the signal is
+// handled, so it has to be rejected at startup rather than silently accepted.
+func TestValidateRejectsNonPositiveShutdownTimeout(t *testing.T) {
+	t.Setenv("API_KEYS", "key")
+
+	for _, value := range []string{"0s", "-5s"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("SHUTDOWN_TIMEOUT", value)
+
+			err := Load().Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want an error for SHUTDOWN_TIMEOUT=%s", value)
+			}
+			if !contains(err.Error(), "SHUTDOWN_TIMEOUT") {
+				t.Errorf("error = %v, want it to mention SHUTDOWN_TIMEOUT", err)
+			}
+		})
 	}
 }
 

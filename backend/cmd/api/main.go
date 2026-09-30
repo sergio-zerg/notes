@@ -31,8 +31,6 @@ import (
 )
 
 const (
-	// Time budget for in-flight requests to finish on shutdown.
-	shutdownTimeout = 10 * time.Second
 	// Header guarding against slowloris-style clients.
 	readHeaderTimeout = 5 * time.Second
 	// Idle keep-alive window.
@@ -204,8 +202,9 @@ func run() error {
 		logger.Error("server failed, shutting down", "error", serveErr)
 	}
 
-	// Graceful shutdown, bounded by shutdownTimeout.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	// Graceful shutdown, bounded by SHUTDOWN_TIMEOUT. The budget covers both
+	// transports, so a slow HTTP drain leaves less room for gRPC to finish.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
