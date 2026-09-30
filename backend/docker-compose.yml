@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  notes-app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./notes.db:/root/notes.db
+    environment:
+      - TZ=UTC
+    restart: unless-stopped

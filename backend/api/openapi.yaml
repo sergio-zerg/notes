@@ -1,0 +1,97 @@
+openapi: 3.0.0
+info:
+  title: Notes API
+  description: A simple CRUD API for managing notes.
+  version: 1.0.0
+paths:
+  /notes:
+    get:
+      summary: List all notes
+      responses:
+        '200':
+          description: A list of notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Note'
+    post:
+      summary: Create a new note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteRequest'
+      responses:
+        '201':
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+  /notes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get a note by ID
+      responses:
+        '200':
+          description: A note object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '404':
+          description: Note not found
+    put:
+      summary: Update a note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteRequest'
+      responses:
+        '200':
+          description: Note updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+    delete:
+      summary: Delete a note
+      responses:
+        '204':
+          description: Note deleted
+components:
+  schemas:
+    Note:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NoteRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+      required:
+        - title
