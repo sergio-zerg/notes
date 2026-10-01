@@ -278,34 +278,6 @@ func TestRateLimitSetsRetryAfter(t *testing.T) {
 	}
 }
 
-// Buckets must not accumulate forever, or a process behind many NATs leaks
-// memory one entry per observed address.
-func TestRateLimiterSweepsIdleBuckets(t *testing.T) {
-	limiter := NewRateLimiter(10, 10)
-	handler := limiter.RateLimitMiddleware(okHandler(new(bool)))
-
-	req := httptest.NewRequest(http.MethodGet, "/notes", nil)
-	req.RemoteAddr = "10.0.0.9:1234"
-	handler.ServeHTTP(rec(t), req)
-
-	limiter.mu.Lock()
-	before := len(limiter.buckets)
-	limiter.mu.Unlock()
-	if before != 1 {
-		t.Fatalf("buckets = %d, want 1", before)
-	}
-
-	// A ttl in the past evicts the bucket that was just used.
-	limiter.cleanup(-time.Second)
-
-	limiter.mu.Lock()
-	after := len(limiter.buckets)
-	limiter.mu.Unlock()
-	if after != 0 {
-		t.Errorf("buckets after sweep = %d, want 0", after)
-	}
-}
-
 // The cleanup goroutine must actually stop, or every reload leaks one.
 func TestRateLimiterStartCleanupStops(t *testing.T) {
 	limiter := NewRateLimiter(1, 1)
@@ -343,16 +315,4 @@ func TestRateLimiterIsConcurrencySafe(t *testing.T) {
 	if got := served.Load(); got != 20 {
 		t.Errorf("served = %d, want 20", got)
 	}
-
-	limiter.mu.Lock()
-	buckets := len(limiter.buckets)
-	limiter.mu.Unlock()
-	if buckets != 20 {
-		t.Errorf("buckets = %d, want one per client address", buckets)
-	}
-}
-
-func rec(t *testing.T) *httptest.ResponseRecorder {
-	t.Helper()
-	return httptest.NewRecorder()
 }

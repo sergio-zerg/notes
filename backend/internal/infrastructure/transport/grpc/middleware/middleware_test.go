@@ -266,3 +266,64 @@ func TestGrpcRateLimiterSeparatesClients(t *testing.T) {
 		t.Errorf("second client = %v, want nil", err)
 	}
 }
+
+// A client backing off needs the wait as a value, not as prose. It used to be
+// spelled inside the error message, which meant every generated client had to
+// parse an English sentence to throttle.
+func TestGrpcRateLimiterReportsRetryAfter(t *testing.T) {
+	limiter := NewGrpcRateLimiter(0.5, 1) // one token every two seconds
+	interceptor := limiter.RateLimitUnaryInterceptor()
+	info := &grpc.UnaryServerInfo{FullMethod: testMethod}
+	ok := func(ctx context.Context, req interface{}) (interface{}, error) { return nil, nil }
+
+	ctx := contextWithPeer("10.0.0.7")
+	if _, err := interceptor(ctx, nil, info, ok); err != nil {
+		t.Fatalf("first call = %v, want nil", err)
+	}
+
+	// A server transport context carries the trailer sink; a bare one would make
+	// grpc.SetTrailer fail and silently drop the metadata.
+	ctx = grpc.NewContextWithServerTransportStream(ctx, &serverTransportStream{})
+
+	_, err := interceptor(ctx, nil, info, ok)
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second call code = %v, want ResourceExhausted", status.Code(err))
+	}
+
+	trailer := trailerFrom(ctx, t)
+	if got := trailer.Get(RetryAfterHeader); len(got) != 1 || got[0] != "2" {
+		t.Errorf("%s = %v, want [2]", RetryAfterHeader, got)
+	}
+}
+
+// serverTransportStream is a transport stream that records the trailer, so a test
+// can read back what the interceptor attached.
+type serverTransportStream struct {
+	grpc.ServerTransportStream
+
+	trailer metadata.MD
+}
+
+func (s *serverTransportStream) SetHeader(md metadata.MD) error { return nil }
+
+func (s *serverTransportStream) SendHeader(md metadata.MD) error { return nil }
+
+func (s *serverTransportStream) SetTrailer(md metadata.MD) error {
+	s.trailer = metadata.Join(s.trailer, md)
+	return nil
+}
+
+func trailerFrom(ctx context.Context, t *testing.T) metadata.MD {
+	t.Helper()
+
+	stream := grpc.ServerTransportStreamFromContext(ctx)
+	if stream == nil {
+		t.Fatal("no server transport stream in the context")
+	}
+
+	recorder, ok := stream.(*serverTransportStream)
+	if !ok {
+		t.Fatalf("stream is %T, want *serverTransportStream", stream)
+	}
+	return recorder.trailer
+}

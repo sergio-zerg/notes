@@ -3,41 +3,36 @@ package middleware
 import (
 	"context"
 	"net"
-	"sync"
+	"strconv"
 	"time"
 
-	"golang.org/x/time/rate"
+	"notes/internal/ratelimit"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
 // GrpcRateLimiter throttles RPCs per client address, mirroring the HTTP
 // limiter so that both transports enforce the same budget.
+//
+// The bucket mechanics live in internal/ratelimit; this type contributes only
+// the client key derived from the call context.
 type GrpcRateLimiter struct {
-	mu       sync.Mutex
-	buckets  map[string]*rate.Limiter
-	lastSeen map[string]time.Time
-	rps      rate.Limit
-	burst    int
+	limiter *ratelimit.Limiter
 }
 
 // NewGrpcRateLimiter creates a per-client limiter for the gRPC transport.
 func NewGrpcRateLimiter(rps float64, burst int) *GrpcRateLimiter {
-	if rps <= 0 {
-		rps = 1
-	}
-	if burst < 1 {
-		burst = 1
-	}
-	return &GrpcRateLimiter{
-		buckets:  make(map[string]*rate.Limiter),
-		lastSeen: make(map[string]time.Time),
-		rps:      rate.Limit(rps),
-		burst:    burst,
-	}
+	return &GrpcRateLimiter{limiter: ratelimit.New(rps, burst)}
 }
+
+// RetryAfterHeader carries the wait in whole seconds, matching the HTTP
+// limiter's Retry-After so a client reading either transport looks in the same
+// place.
+const RetryAfterHeader = "retry-after"
 
 // RateLimitUnaryInterceptor rejects RPCs that exceed the caller's budget.
 func (l *GrpcRateLimiter) RateLimitUnaryInterceptor() grpc.UnaryServerInterceptor {
@@ -47,63 +42,30 @@ func (l *GrpcRateLimiter) RateLimitUnaryInterceptor() grpc.UnaryServerIntercepto
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		if !l.allow(ctx) {
-			return nil, status.Errorf(codes.ResourceExhausted,
-				"rate limit exceeded, retry after about %.1fs", l.retryAfterSeconds())
+		if !l.limiter.Allow(grpcClientKey(ctx)) {
+			// The wait travels as trailer metadata rather than inside the
+			// message: a client backoff reads a field, and parsing the delay out
+			// of prose meant every generated client had to know the wording of
+			// this sentence to throttle correctly.
+			retry := l.limiter.RetryAfter()
+			// A failure here only means the metadata will be absent, which
+			// leaves the status code as the signal — not worth losing the
+			// rejection over.
+			_ = grpc.SetTrailer(ctx, metadata.Pairs(
+				RetryAfterHeader, strconv.FormatInt(int64(retry.Seconds()), 10),
+			))
+
+			return nil, status.Error(codes.ResourceExhausted, "rate limit exceeded")
 		}
 		return handler(ctx, req)
 	}
 }
 
-// retryAfterSeconds is how long a bucket of n tokens takes to refill, which is
-// the wait a well-behaved client should observe before retrying.
-func (l *GrpcRateLimiter) retryAfterSeconds() float64 {
-	return float64(l.burst-1) / float64(l.rps)
-}
-
-func (l *GrpcRateLimiter) allow(ctx context.Context) bool {
-	key := grpcClientKey(ctx)
-
-	l.mu.Lock()
-	limiter, ok := l.buckets[key]
-	if !ok {
-		limiter = rate.NewLimiter(l.rps, l.burst)
-		l.buckets[key] = limiter
-	}
-	l.lastSeen[key] = time.Now()
-	l.mu.Unlock()
-
-	return limiter.Allow()
-}
-
-// StartCleanup sweeps buckets idle for longer than ttl until ctx is cancelled.
-// Without it the map grows with every distinct peer address ever observed.
-func (l *GrpcRateLimiter) StartCleanup(ctx context.Context, every, ttl time.Duration) {
-	go func() {
-		ticker := time.NewTicker(every)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				l.sweep(ttl)
-			}
-		}
-	}()
-}
-
-func (l *GrpcRateLimiter) sweep(ttl time.Duration) {
-	cutoff := time.Now().Add(-ttl)
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for key, seen := range l.lastSeen {
-		if seen.Before(cutoff) {
-			delete(l.buckets, key)
-			delete(l.lastSeen, key)
-		}
-	}
+// StartCleanup sweeps buckets idle for longer than ttl until ctx is cancelled
+// or the returned function is called. Without it the map grows with every
+// distinct peer address ever observed.
+func (l *GrpcRateLimiter) StartCleanup(ctx context.Context, every, ttl time.Duration) func() {
+	return l.limiter.StartCleanup(ctx, every, ttl)
 }
 
 // grpcClientKey identifies the caller by peer address. Proxy headers are

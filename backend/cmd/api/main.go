@@ -115,22 +115,13 @@ func run() error {
 		"/healthz",
 	)
 
-	limiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
-	stopCleanup := limiter.StartCleanup(ctx, cleanupInterval, bucketTTL)
-	defer stopCleanup()
-
-	instrumented := http.Handler(httpRouter)
-	// Applied bottom-up, so the execution order is the reverse: validation
-	// runs first, then recovery, then logging, metrics and finally tracing.
-	instrumented = middleware.TracingMiddleware(instrumented)
-	instrumented = middleware.MetricsMiddleware(instrumented)
-	instrumented = middleware.LoggingMiddleware(logger)(instrumented)
-	instrumented = middleware.RecoveryMiddleware(logger)(instrumented)
-	instrumented = middleware.ValidationMiddleware(instrumented)
-	// Auth and rate limiting sit outermost: reject unwanted work before it
-	// costs a span or a metrics series.
-	instrumented = auth.AuthMiddleware(instrumented)
-	instrumented = limiter.RateLimitMiddleware(instrumented)
+	// The limiter's cleanup goroutine is returned so the caller can stop it on
+	// shutdown; it is nil when rate limiting is switched off, in which case
+	// no bucket is ever created and there is nothing to sweep.
+	limiterCleanup, instrumented := buildHTTPChain(ctx, logger, httpRouter, auth, cfg)
+	if limiterCleanup != nil {
+		defer limiterCleanup()
+	}
 
 	dispatch := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metrics" {
@@ -157,15 +148,19 @@ func run() error {
 	// 6. gRPC transport. The same rules apply as over HTTP: the caller must
 	// present a key, and bursts beyond the budget are rejected.
 	authorizer := grpcmiddleware.NewAuthorizer(cfg.APIKeys, cfg.AllowInsecure)
-	grpcLimiter := grpcmiddleware.NewGrpcRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
-	grpcLimiter.StartCleanup(ctx, cleanupInterval, bucketTTL)
+
+	interceptors := []grpc.UnaryServerInterceptor{
+		grpcmiddleware.GrpcMetricsInterceptor(),
+		authorizer.AuthorizeUnaryInterceptor(),
+	}
+	if cfg.RateLimitEnabled {
+		grpcLimiter := grpcmiddleware.NewGrpcRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+		defer grpcLimiter.StartCleanup(ctx, cleanupInterval, bucketTTL)()
+		interceptors = append(interceptors, grpcLimiter.RateLimitUnaryInterceptor())
+	}
 
 	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			grpcmiddleware.GrpcMetricsInterceptor(),
-			authorizer.AuthorizeUnaryInterceptor(),
-			grpcLimiter.RateLimitUnaryInterceptor(),
-		),
+		grpc.ChainUnaryInterceptor(interceptors...),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 	proto.RegisterNoteServiceServer(grpcServer, grpctransport.NewNoteHandler(service))
@@ -235,4 +230,39 @@ func run() error {
 	logger.Info("servers stopped")
 
 	return serveErr
+}
+
+// buildHTTPChain assembles the instrumented HTTP handler and returns it with
+// the function that stops the rate limiter's bucket sweep, or nil when rate
+// limiting is switched off.
+//
+// The function exists so that the RATE_LIMIT_ENABLED switch is exercised by a
+// test. When that flag was read in config but never consulted here, the service
+// documented a way to turn limiting off that did nothing, and no test failed.
+func buildHTTPChain(
+	ctx context.Context,
+	logger *slog.Logger,
+	router *mux.Router,
+	auth *middleware.APIKeyAuthenticator,
+	cfg *config.Config,
+) (func(), http.Handler) {
+	// Applied bottom-up, so the execution order is the reverse: validation
+	// runs first, then recovery, then logging, metrics and finally tracing.
+	var handler http.Handler = router
+	handler = middleware.TracingMiddleware(handler)
+	handler = middleware.MetricsMiddleware(handler)
+	handler = middleware.LoggingMiddleware(logger)(handler)
+	handler = middleware.RecoveryMiddleware(logger)(handler)
+	handler = middleware.ValidationMiddleware(handler)
+	// Auth and rate limiting sit outermost: reject unwanted work before it
+	// costs a span or a metrics series.
+	handler = auth.AuthMiddleware(handler)
+
+	if !cfg.RateLimitEnabled {
+		return nil, handler
+	}
+
+	limiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+	return limiter.StartCleanup(ctx, cleanupInterval, bucketTTL),
+		limiter.RateLimitMiddleware(handler)
 }
