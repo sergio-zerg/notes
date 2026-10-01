@@ -32,7 +32,9 @@ func (dao *NoteDAO) FindByID(ctx context.Context, id int64) (*domain.Note, error
 	var n domain.Note
 	err := row.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		// errors.Is rather than ==: the driver is free to wrap sql.ErrNoRows,
+		// and a wrapped "no rows" silently became a 500 instead of a 404.
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.ErrNoteNotFound
 		}
 		return nil, err
