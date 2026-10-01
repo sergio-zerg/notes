@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup rules for Android 12 and below (full-backup).
+
+  The API key is deliberately excluded: it is a shared secret that the server
+  considers a credential, and restoring it onto another device would put a
+  working key in a place the user never chose. The keystore entry that protects
+  it is not part of the backup anyway, so the ciphertext would be useless on
+  restore while still sitting in a backup archive.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage"/>
+    <exclude domain="sharedpref" path="flutter_secure_storage"/>
+</full-backup-content>

@@ -1,0 +1,14 @@
+# Editor and OS noise. The per-project .gitignore files handle their own
+# directories; this covers what lands in between them.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Tool state, not source
+.qodo/
+
+# Local environment. The tracked template is backend/.env.example.
+.env
+.env.local
+.env.*.local

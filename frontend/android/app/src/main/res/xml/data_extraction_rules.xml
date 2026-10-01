@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup and device-transfer rules for Android 13 and above.
+
+  Two mechanisms replace full-backup here, and both need the key excluded: a
+  cloud backup would otherwise carry it off the device, and a direct device
+  transfer would copy it to hardware the user may not control.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="FlutterSecureStorage"/>
+        <exclude domain="sharedpref" path="flutter_secure_storage"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="FlutterSecureStorage"/>
+        <exclude domain="sharedpref" path="flutter_secure_storage"/>
+    </device-transfer>
+</data-extraction-rules>
