@@ -97,5 +97,12 @@ EXPOSE 80
 
 # nginx serves the app shell immediately, so this checks the bundle is actually
 # reachable rather than that the process is alive.
+#
+# 127.0.0.1, not localhost: inside the container localhost resolves to ::1 first,
+# and the default docker bridge has IPv6 disabled, so nginx is bound to
+# 0.0.0.0:80 only and a request by name is refused. Binding [::]:80 instead
+# would be the other fix, except nginx then fails to start at all on a network
+# without IPv6. Addressing a literal address keeps the check honest and drops
+# the DNS lookup from it.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -q -O /dev/null http://localhost:80/ || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:80/ || exit 1
