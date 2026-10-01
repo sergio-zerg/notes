@@ -43,6 +43,19 @@
 - [x] Deterministic `ORDER BY` so `OFFSET` paging is stable
 - [x] `NotesCreatedTotal` metric removed (would have inverted layer dependencies)
 - [x] `task proto:gen` for regenerating protobuf code
+- [x] `RATE_LIMIT_ENABLED=false` actually disables limiting on both transports —
+      the flag was parsed and validated but never consulted when the chain was
+      built, so the documented switch did nothing
+- [x] Bucket mechanics shared by both transports in `internal/ratelimit`,
+      replacing two near-identical copies that could drift apart
+- [x] `Retry-After` advertises the wait for one token (`1/rps`) rather than a
+      full bucket refill, which overstated it by up to `burst/rps`; the gRPC
+      limiter sends the same value as trailer metadata instead of prose
+- [x] An oversized body with no `Content-Length` answers 413 instead of 400 —
+      the client was told its JSON was malformed and shortened the note
+- [x] `sql.ErrNoRows` matched with `errors.Is`, so a wrapped error is a 404
+- [x] Schema: `content` is `NOT NULL`, `id` is an identity column, and search
+      has `pg_trgm` GIN indexes
 
 **Priority 4 — Correctness, security, production readiness**
 - [x] `UpdateNote` rewritten as a single `UPDATE ... RETURNING` — one round trip,
@@ -70,12 +83,17 @@
       deployments need per-user identities, hashed storage and expiry
 - [ ] Rate limiting is per process, so N replicas admit N times the traffic; a
       shared store or an edge limiter would be needed to cap it globally
+- [ ] Rate limiting keys on the peer address, so behind a reverse proxy or an
+      ingress every client shares one bucket. `X-Forwarded-For` is deliberately
+      not trusted because it is client-controlled; a deployment behind a proxy
+      needs an explicit list of trusted hop addresses
 - [ ] OTLP transport is plaintext (`WithInsecure`); a remote collector needs TLS
 - [ ] Traces are sampled per root span, not by service name, so there is no
       separate sampling budget for each dependency
 - [ ] gRPC reflection is not registered, so `grpcurl` needs `-proto notes.proto`
 - [ ] `CreateNote` could be given an idempotency key to survive client retries
-- [ ] Search uses `ILIKE` with a leading wildcard, so no index is used
+- [ ] Search is covered by `pg_trgm` GIN indexes, but the planner still prefers
+      a sequential scan on small tables, which is the cheaper plan there
 
 ## 📌 Architecture Reminders
 

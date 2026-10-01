@@ -264,13 +264,16 @@ components:
     TooManyRequests:
       description: |
         The client exceeded its rate limit budget. Retry-After states how long
-        to wait before the next attempt.
+        to wait before the next attempt: the wait for a single token, which is
+        ceil(1 / RATE_LIMIT_RPS) seconds. It is not the time to refill a whole
+        bucket, so a client that honours it will never stall longer than it has
+        to.
       headers:
         Retry-After:
           schema:
             type: integer
             description: Seconds to wait before retrying.
-          example: 2
+          example: 1
       content:
         application/json:
           schema:
@@ -295,7 +298,11 @@ components:
             example: note not found
 
     PayloadTooLarge:
-      description: Request body exceeds the 1 MiB limit
+      description: |
+        Request body exceeds the 1 MiB limit. Returned both when Content-Length
+        announces an oversized body up front and when a chunked body trips the
+        cap while it is being read, so a client never has to distinguish the two
+        and shorten a note that was not the problem.
       content:
         text/plain:
           schema:
