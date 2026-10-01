@@ -1,0 +1,33 @@
+# Keeps the build context to source. The context is uploaded in full before any
+# layer is cached, so stray local files cost real time on every rebuild.
+#
+# vendor/ is deliberately NOT excluded: it is committed, and go build uses it
+# automatically (-mod=vendor). Ignoring it would make the image depend on
+# whatever the module proxy served at build time.
+
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Local secrets. Only .env.example belongs in the image, and it does not either.
+.env
+.env.local
+.env.*.local
+
+# Local build output and test artifacts.
+#
+# Anchored for the same reason as in .gitignore: a bare `coverage.*` here would
+# drop vendor/golang.org/x/text/language/coverage.go from the build context and
+# the image would not compile.
+/notes_app
+/notes-app
+/out/
+/dist/
+/*.out
+/coverage.html
+/coverage.txt
+
+# Docs — not needed to compile
+*.md

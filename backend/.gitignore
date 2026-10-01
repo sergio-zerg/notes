@@ -4,9 +4,18 @@ notes-app
 /out/
 /dist/
 
-# Go test artifacts
-*.out
-coverage.*
+# Go test artifacts.
+#
+# These are anchored to this directory on purpose. An unanchored `coverage.*`
+# also matches vendored *source*: it silently swallowed
+# vendor/golang.org/x/text/language/coverage.go, and because that file defines
+# language.NewCoverage, the committed vendor tree did not compile. `go build
+# ./...` failed on any fresh clone with "undefined: language.NewCoverage" while
+# passing on the machine that happened to still have the file lying around
+# untracked. `task clean` only ever removes these two at the module root.
+/*.out
+/coverage.html
+/coverage.txt
 
 # Local secrets. .env.example is the tracked template and stays visible.
 .env
