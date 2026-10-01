@@ -106,7 +106,7 @@ tracked and safe to share. Note the scope, it is narrower than it looks:
 - `docker compose up` reads `.env` automatically, and nothing else does.
 - `go run ./cmd/api` does **not** read it. The application only calls
   `os.Getenv`, so for a host run use `set -a; . ./.env; set +a`.
-- CI has its own `env` block in `.github/workflows/ci.yml` and ignores `.env`.
+- CI has its own `env` block in `.github/workflows/ci.yml` and ignores `.env`. That file lives at the repository root, not here: GitHub only reads workflows from the root.
 
 `DB_USER`, `DB_PASS` and `DB_NAME` feed both the Postgres container and the
 application, so credentials are defined once. `DB_PORT` moves only the

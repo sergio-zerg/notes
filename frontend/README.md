@@ -152,6 +152,14 @@ static output; `nginx.conf` serves it with hashed assets cached immutably and
 every unknown path falling back to `index.html`, because the routes live in
 go_router and have no file behind them.
 
+There is no ready-made image to start from: the newest published Flutter image
+carries Dart 3.12, this project requires `^3.13.4`, and no tag satisfies that.
+The SDK is fetched from the official release archive with its checksum pinned,
+so upgrading means changing `FLUTTER_VERSION` and `FLUTTER_SHA256` together.
+Flutter also ships no arm64 Linux SDK, so the build stage is pinned to
+`linux/amd64` — correct on both architectures, but emulated on Apple Silicon,
+which is where the time goes on a cold build.
+
 **The API address is compiled in.** `--dart-define=API_BASE_URL` is baked into
 the bundle at build time, so a served build cannot be repointed afterwards:
 
