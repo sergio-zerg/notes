@@ -9,6 +9,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    defaults:
+      # GitHub only reads workflows from the repository root, so this file moved
+      # up when the backend joined the monorepo. Every command below therefore
+      # has to name the module directory, or it runs where there is no go.mod
+      # and no Taskfile.
+      run:
+        working-directory: backend
+
     permissions:
       contents: read
 
@@ -37,9 +46,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # Must satisfy the "go" directive in go.mod.
-          go-version-file: go.mod
+          # Must satisfy the "go" directive in go.mod. The path is relative to
+          # the repository root, not to the defaults.run working directory.
+          go-version-file: backend/go.mod
           cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: Check gofmt
         # vendor/ is excluded: it holds third-party code at its upstream
@@ -60,6 +71,11 @@ jobs:
         uses: golangci-lint/golangci-lint-action@v6
         with:
           version: latest
+          # `defaults.run` does not reach a `uses:` step, so this one has to
+          # name the directory itself. Left unset, the action runs in the
+          # repository root, finds no .golangci.yml and no Go files there, and
+          # reports on nothing.
+          working-directory: backend
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
