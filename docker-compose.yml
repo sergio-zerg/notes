@@ -1,0 +1,37 @@
+# Full local stack: database, API (REST + gRPC) and the Flutter web client.
+#
+# The API and database services are not repeated here. They are pulled in from
+# backend/docker-compose.yml with `include`, so there is exactly one definition
+# of each: the file that ships with the backend also works on its own, and this
+# one cannot drift away from it.
+#
+#   docker compose up -d          (or ./up.sh)
+#
+# Ports:
+#   5432  PostgreSQL
+#   8080  REST API
+#   50051 gRPC API
+#   8081  Web client
+
+include:
+  - backend/docker-compose.yml
+
+services:
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Compiled into the bundle, so this is build-time only. Default assumes
+        # the browser is on the same machine as the API; a phone on the same
+        # network needs the host's LAN address instead:
+        #   WEB_API_BASE_URL=http://192.168.1.10:8080 ./up.sh rebuild
+        API_BASE_URL: "${WEB_API_BASE_URL:-http://localhost:8080}"
+    ports:
+      - "${WEB_PORT:-8081}:80"
+    depends_on:
+      # Wait for a real /healthz, not just a started container: the web client is
+      # useless until the API can answer, and the first login attempt is where
+      # that failure would otherwise surface — to the user, not to the deploy.
+      notes-app:
+        condition: service_healthy
+    restart: unless-stopped

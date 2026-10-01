@@ -1,0 +1,28 @@
+# Build context hygiene. Without this the image build ships the host's own
+# build/ (200+ MB) and .dart_tool/ (80+ MB) into the container, where `flutter
+# build web` would then read stale host artifacts instead of producing its own.
+.dart_tool/
+build/
+coverage/
+pubspec_overrides.yaml
+
+# Version control and tooling
+.git/
+.gitignore
+.idea/
+.qodo/
+
+# Generated per-platform files. The image only builds for web, so the mobile
+# and desktop trees are dead weight in the context. web/ is deliberately NOT
+# excluded: flutter build web uses it as the page template.
+android/
+ios/
+macos/
+linux/
+windows/
+
+# Docs and local config
+README.md
+*.md
+.env
+.env.*
