@@ -174,6 +174,29 @@ func TestCreateNote(t *testing.T) {
 		}
 	})
 
+	// A chunked request carries no Content-Length, so the cap is only enforced
+	// by MaxBytesReader while the handler reads. That surfaces as a
+	// *http.MaxBytesError from the decoder rather than as the middleware's
+	// early rejection, and the handler must still report it as 413: answering
+	// 400 told the client its JSON was malformed, which it would "fix" by
+	// shortening the note and failing again.
+	//
+	// The body is an unterminated JSON string rather than arbitrary bytes: a
+	// payload of bare characters fails on the first byte with a syntax error,
+	// before the decoder ever reaches the size limit.
+	t.Run("oversized chunked body returns 413, not 400", func(t *testing.T) {
+		body := `{"title":"` + strings.Repeat("x", middleware.MaxRequestBodySize+1024)
+		req := httptest.NewRequest(http.MethodPost, "/notes", strings.NewReader(body))
+		req.ContentLength = -1 // unknown length, as with chunked encoding
+
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("status = %d, want 413 (body: %s)", rec.Code, rec.Body.String())
+		}
+	})
+
 	t.Run("oversized update returns 413", func(t *testing.T) {
 		oversize := strings.Repeat("x", middleware.MaxRequestBodySize+1024)
 		rec := do(t, r, http.MethodPut, "/notes/1", oversize)

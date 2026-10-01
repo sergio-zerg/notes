@@ -38,6 +38,26 @@ type updateNoteRequest struct {
 	Content string `json:"content"`
 }
 
+// decodeBody reads and decodes a JSON request body.
+//
+// The read is capped by ValidationMiddleware through http.MaxBytesReader, and a
+// body that trips that cap fails as *http.MaxBytesError rather than as a
+// syntax error. Reporting that as 413 is the difference between telling a
+// client its note is too large and telling it the JSON is malformed, which it
+// would answer by shortening the field and failing again.
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return err
+		}
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return err
+	}
+	return nil
+}
+
 // writeError maps a domain error to an HTTP response. Client errors keep their
 // message; anything unexpected is logged and replaced with a generic 500 so
 // that internal details are not leaked to callers.
@@ -68,8 +88,7 @@ func (h *NoteHandler) writeJSON(w http.ResponseWriter, status int, payload any) 
 
 func (h *NoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createNoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json body", http.StatusBadRequest)
+	if err := decodeBody(w, r, &req); err != nil {
 		return
 	}
 
@@ -106,8 +125,7 @@ func (h *NoteHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateNoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json body", http.StatusBadRequest)
+	if err := decodeBody(w, r, &req); err != nil {
 		return
 	}
 
