@@ -73,18 +73,18 @@ func TestSamplerIsParentBased(t *testing.T) {
 	}
 }
 
-func TestIsExporterValid(t *testing.T) {
-	valid := []string{"stdout", "otlp", "none"}
-	for _, name := range valid {
-		if !IsExporterValid(name) {
-			t.Errorf("IsExporterValid(%q) = false, want true", name)
-		}
+// An unsupported exporter name must be rejected by config validation, where
+// the mistake surfaces at startup rather than on the first span.
+func TestUnknownExporterIsRejected(t *testing.T) {
+	_, err := newExporter(TracerConfig{Exporter: TraceExporter("kafka")})
+	if err == nil {
+		t.Fatal("newExporter() = nil, want an error for an unsupported exporter")
 	}
 
-	for _, name := range []string{"", "kafka", "stdout "} {
-		if IsExporterValid(name) {
-			t.Errorf("IsExporterValid(%q) = true, want false", name)
-		}
+	shutdown, err := InitTracer(TracerConfig{Exporter: TraceExporter("stdout "), SampleRatio: 1})
+	if err == nil {
+		_ = shutdown(context.Background())
+		t.Error("InitTracer() accepted an exporter name with trailing whitespace")
 	}
 }
 

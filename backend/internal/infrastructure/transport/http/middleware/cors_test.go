@@ -156,22 +156,56 @@ func TestCORSPassesPlainOptionsThrough(t *testing.T) {
 	}
 }
 
-func TestOriginAllowed(t *testing.T) {
-	t.Run("wildcard", func(t *testing.T) {
-		if !OriginAllowed([]string{"*"}, "http://anything.example") {
-			t.Error("OriginAllowed = false, want true for a wildcard list")
-		}
-	})
+// A disallowed origin must get no Access-Control-Allow-Origin header at all,
+// so the browser hides the response from the page. The request itself still
+// runs, which is what leaves non-browser clients unaffected. A wildcard list
+// answers with "*" rather than echoing the origin back.
+func TestCORSOriginMatching(t *testing.T) {
+	cases := []struct {
+		name    string
+		allowed []string
+		origin  string
+		want    string
+	}{
+		{"listed origin is echoed", []string{"http://localhost:8081"}, "http://localhost:8081", "http://localhost:8081"},
+		{"unlisted origin gets no header", []string{"http://localhost:8081"}, "http://localhost:9090", ""},
+		{"wildcard answers with a star", []string{"*"}, "http://anything.example", "*"},
+		{"wildcard among others", []string{"http://a.example", "*"}, "http://b.example", "*"},
+	}
 
-	t.Run("exact match", func(t *testing.T) {
-		if !OriginAllowed([]string{"http://localhost:8081"}, "http://localhost:8081") {
-			t.Error("OriginAllowed = false, want true for a listed origin")
-		}
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var served bool
+			h := CORSMiddleware(tc.allowed)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				served = true
+			}))
 
-	t.Run("unlisted origin", func(t *testing.T) {
-		if OriginAllowed([]string{"http://localhost:8081"}, "http://localhost:9090") {
-			t.Error("OriginAllowed = true, want false for an unlisted origin")
-		}
-	})
+			req := httptest.NewRequest(http.MethodGet, "/notes", nil)
+			req.Header.Set("Origin", tc.origin)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if !served {
+				t.Error("the request was blocked; CORS is a browser concern, not access control")
+			}
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != tc.want {
+				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A cross-origin response varies by origin, so a shared cache must not hand a
+// page the answer computed for another one.
+func TestCORSVariesOnOrigin(t *testing.T) {
+	h := CORSMiddleware([]string{"*"})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	req := httptest.NewRequest(http.MethodGet, "/notes", nil)
+	req.Header.Set("Origin", "http://localhost:8081")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Vary"); got != "Origin" {
+		t.Errorf("Vary = %q, want Origin", got)
+	}
 }

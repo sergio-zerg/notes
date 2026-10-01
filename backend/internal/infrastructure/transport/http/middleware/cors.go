@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"net/http"
-	"strings"
 )
 
 const (
@@ -98,16 +97,4 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// OriginAllowed reports whether the given Origin would be granted access. It
-// exists for tests and for callers that need to explain a rejection before the
-// request is made.
-func OriginAllowed(allowedOrigins []string, origin string) bool {
-	for _, allowed := range allowedOrigins {
-		if allowed == "*" || strings.EqualFold(allowed, origin) {
-			return true
-		}
-	}
-	return false
 }

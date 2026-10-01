@@ -133,17 +133,6 @@ func serviceResource(serviceName string) *resource.Resource {
 	)
 }
 
-// IsExporterValid reports whether name is a supported exporter. Used by config
-// validation so the error surfaces at startup rather than on first span.
-func IsExporterValid(name string) bool {
-	switch TraceExporter(name) {
-	case ExporterStdout, ExporterOTLP, ExporterNone:
-		return true
-	default:
-		return false
-	}
-}
-
 // GetTracer returns a tracer for the given name.
 func GetTracer(name string) trace.Tracer {
 	return otel.Tracer(name)
