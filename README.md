@@ -39,7 +39,16 @@ The whole stack (PostgreSQL + API + Flutter web client) comes up with one comman
 ./up.sh down            # stop, keep the database
 ```
 
-Defaults: REST on `:8080`, gRPC on `:50051`, web client on `:8081`.
+Once it is up:
+
+| Service | URL |
+|---------|-----|
+| Web client | http://localhost:8081 |
+| REST API | http://localhost:8080 — gRPC on `:50051` |
+| Metrics | http://localhost:8080/metrics |
+
+Sign in with the default compose API key **`dev-secret-key-change-me`** (override `API_KEYS` for anything real).
+
 For host/dev runs without Docker, see [`backend/README.md`](backend/README.md).
 
 ## Auth & configuration
