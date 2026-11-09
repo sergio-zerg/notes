@@ -10,9 +10,7 @@ built as a pet project to practise clean architecture, dual **REST + gRPC**
 transports, and a production-shaped delivery setup (Docker, migrations, auth,
 rate limiting, observability, CI).
 
-<!-- When you have a screenshot or GIF of the Flutter client, drop it in docs/ and uncomment:
-![Notes client](docs/screenshot.png)
--->
+![The Flutter client — notes list](docs/screenshot-list.png)
 
 ## Repository layout
 
@@ -71,6 +69,12 @@ is documented inline in [`backend/.env.example`](backend/.env.example).
 - **Delivery hygiene** — embedded migrations, graceful shutdown, API-key auth, per-client rate limiting, body-size limits, CORS.
 - **Observability** — OpenTelemetry tracing and metrics, structured logging.
 - **Testing & CI** — unit and integration tests across layers, GitHub Actions pipeline.
+
+## Screenshots
+
+| New note | Empty state | Light theme |
+|---|---|---|
+| ![New note](docs/screenshot-editor.png) | ![Empty state](docs/screenshot-empty.png) | ![Light theme](docs/screenshot-list-light.png) |
 
 ## Status
 
