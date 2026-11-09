@@ -68,7 +68,7 @@ jobs:
         run: sh -c "$(curl -fsSL https://taskfile.dev/install.sh)"
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           # `defaults.run` does not reach a `uses:` step, so this one has to
