@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       # Credentials come from .env so the password is defined in exactly one
       # place and never has to be committed. Changing them after the first

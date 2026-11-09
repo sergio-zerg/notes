@@ -70,6 +70,7 @@ jobs:
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
+          install-mode: goinstall
           version: latest
           # `defaults.run` does not reach a `uses:` step, so this one has to
           # name the directory itself. Left unset, the action runs in the
