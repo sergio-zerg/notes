@@ -50,3 +50,7 @@ is documented inline in [`backend/.env.example`](backend/.env.example).
 
 Pet project — the focus is architecture and delivery hygiene (layering,
 testing, CI, observability), not feature breadth.
+
+## License
+
+[MIT](LICENSE) © sergio-zerg
