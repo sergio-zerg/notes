@@ -27,7 +27,7 @@ tasks:
   db:up:
     desc: Start Postgres for local integration testing
     cmds:
-      - docker compose up -d db
+      - docker compose up -d --wait db
     sources:
       - docker-compose.yml
     run: once
