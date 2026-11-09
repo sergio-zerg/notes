@@ -8,6 +8,20 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	// Hermetic: the surrounding CI sets some of these in the job environment,
+	// and getEnv treats an empty value as set, so unset them (restoring after)
+	// to actually exercise the built-in defaults.
+	for _, k := range []string{
+		"HTTP_PORT", "GRPC_PORT", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_NAME",
+		"RATE_LIMIT_ENABLED", "RATE_LIMIT_RPS", "RATE_LIMIT_BURST",
+		"TRACE_EXPORTER", "API_KEYS", "ALLOW_INSECURE_AUTH", "CORS_ALLOWED_ORIGINS", "SHUTDOWN_TIMEOUT",
+	} {
+		if orig, ok := os.LookupEnv(k); ok {
+			os.Unsetenv(k)
+			t.Cleanup(func() { os.Setenv(k, orig) })
+		}
+	}
+
 	cfg := Load()
 
 	if cfg.HTTPPort != ":8080" {

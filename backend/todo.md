@@ -101,3 +101,9 @@
 - **Clean Architecture**: Domain → Application → Infrastructure
 - **DDD**: repository interfaces live in the domain, implementations in infrastructure
 - **Single source of truth** for business rules: the domain layer
+
+## CI / tooling
+- [ ] Revisit the golangci-lint `install-mode: goinstall` workaround (ci.yml): it builds
+      golangci-lint from source with the job's Go toolchain so it can lint a Go 1.26 module.
+      Once an official golangci-lint release built with Go 1.26 ships, switch back to
+      `install-mode: binary` (faster) and drop this note.
