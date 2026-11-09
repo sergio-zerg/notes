@@ -28,13 +28,15 @@ linters:
         - name: error-strings
         - name: receiver-naming
         - name: time-naming
+  # golangci-lint v2 moved issue exclusions here (was issues.exclude-rules in v1).
+  exclusions:
+    rules:
+      # Generated protobuf code is not hand-maintained.
+      - path: api/proto/
+        linters:
+          - unconvert
+          - whitespace
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Generated protobuf code is not hand-maintained.
-    - path: api/proto/
-      linters:
-        - unconvert
-        - whitespace
