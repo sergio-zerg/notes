@@ -16,10 +16,18 @@ func TestLoadDefaults(t *testing.T) {
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_RPS", "RATE_LIMIT_BURST",
 		"TRACE_EXPORTER", "API_KEYS", "ALLOW_INSECURE_AUTH", "CORS_ALLOWED_ORIGINS", "SHUTDOWN_TIMEOUT",
 	} {
-		if orig, ok := os.LookupEnv(k); ok {
-			os.Unsetenv(k)
-			t.Cleanup(func() { os.Setenv(k, orig) })
+		orig, ok := os.LookupEnv(k)
+		if !ok {
+			continue
 		}
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("unset %s: %v", k, err)
+		}
+		t.Cleanup(func() {
+			if err := os.Setenv(k, orig); err != nil {
+				t.Errorf("restore %s: %v", k, err)
+			}
+		})
 	}
 
 	cfg := Load()
