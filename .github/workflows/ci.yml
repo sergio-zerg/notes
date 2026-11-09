@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Install Task
-        run: sh -c "$(curl -fsSL https://taskfile.dev/install.sh)"
+        run: sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v7
