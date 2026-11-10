@@ -107,10 +107,3 @@
       golangci-lint from source with the job's Go toolchain so it can lint a Go 1.26 module.
       Once an official golangci-lint release built with Go 1.26 ships, switch back to
       `install-mode: binary` (faster) and drop this note.
-
-## 🚀 Planned Features
-
-- [ ] **Calendar** — a calendar view of notes by date (browse and create notes on a given day)
-- [ ] **Reminders** — due dates and reminders on notes, with notifications
-- [ ] **Checklists** — checkboxes / to-do lists inside a note, with per-item checked state
-- [ ] **Markdown support** — write and render note content as Markdown
