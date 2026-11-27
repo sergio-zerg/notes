@@ -1,3 +1,5 @@
+**English** | [Русский](README.ru.md)
+
 <p align="center"><img src="docs/cover.png" alt="notes" width="100%"></p>
 
 # 📝 Notes
@@ -81,7 +83,8 @@ is documented inline in [`backend/.env.example`](backend/.env.example).
 ## Status
 
 Pet project — the focus is architecture and delivery hygiene (layering,
-testing, CI, observability), not feature breadth.
+testing, CI, observability), not feature breadth. What is done and what is
+next — [roadmap](ROADMAP.md).
 
 ## License
 
