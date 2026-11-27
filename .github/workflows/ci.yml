@@ -7,6 +7,15 @@ on:
     branches: [ main, master ]
 
 jobs:
+  docs:
+    name: Docs have RU and EN versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-docs-i18n.sh
+
   test:
     runs-on: ubuntu-latest
 
