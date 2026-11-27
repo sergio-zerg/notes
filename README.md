@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/cover.png" alt="notes" width="100%"></p>
+
 # 📝 Notes
 
 [![CI](https://github.com/sergio-zerg/notes/actions/workflows/ci.yml/badge.svg)](https://github.com/sergio-zerg/notes/actions/workflows/ci.yml)
