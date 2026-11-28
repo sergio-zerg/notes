@@ -22,6 +22,11 @@ func TestNoteValidate(t *testing.T) {
 		{"title too short", "ab", "content", "title must be at least 3 characters"},
 		{"title too long", strings.Repeat("a", 101), "content", "title must be at most 100 characters"},
 		{"empty content", "Valid Title", "", "content is required"},
+		// Measured after trimming, like the Flutter client: whitespace alone
+		// is not a title, and padding does not count towards the minimum.
+		{"whitespace-only title", "     ", "content", "title is required"},
+		{"padded short title", "  ab  ", "content", "title must be at least 3 characters"},
+		{"whitespace-only content", "Valid Title", " \n\t ", "content is required"},
 	}
 
 	for _, tc := range cases {

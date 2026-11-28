@@ -205,7 +205,7 @@ func TestSelectAllBuildsContiguousPlaceholders(t *testing.T) {
 	db, mock := mockDB(t)
 	dao := NewNoteDAO(db)
 
-	mock.ExpectQuery(`WHERE \(title ILIKE \$1 OR content ILIKE \$1\) ORDER BY id LIMIT \$2 OFFSET \$3`).
+	mock.ExpectQuery(`WHERE \(title ILIKE \$1 ESCAPE '\\' OR content ILIKE \$1 ESCAPE '\\'\) ORDER BY id LIMIT \$2 OFFSET \$3`).
 		WithArgs("%report%", 10, 20).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "content", "created_at", "updated_at"}))
 
@@ -215,6 +215,38 @@ func TestSelectAllBuildsContiguousPlaceholders(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
+	}
+}
+
+// LIKE metacharacters in the search term must match literally. Unescaped, a
+// search for "50%" matched "500 items", and "a_b" matched "axb".
+func TestSelectAllEscapesLikeMetacharacters(t *testing.T) {
+	cases := []struct {
+		query string
+		arg   string
+	}{
+		{`50%`, `%50\%%`},
+		{`a_b`, `%a\_b%`},
+		{`C:\dir`, `%C:\\dir%`},
+		{`plain`, `%plain%`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			db, mock := mockDB(t)
+			dao := NewNoteDAO(db)
+
+			mock.ExpectQuery(`ILIKE \$1 ESCAPE`).
+				WithArgs(tc.arg).
+				WillReturnRows(sqlmock.NewRows([]string{"id", "title", "content", "created_at", "updated_at"}))
+
+			if _, err := dao.SelectAll(context.Background(), domain.ListFilter{Query: tc.query}); err != nil {
+				t.Fatalf("SelectAll() = %v", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Error(err)
+			}
+		})
 	}
 }
 
@@ -245,7 +277,7 @@ func TestSelectAllClauseOrder(t *testing.T) {
 		{
 			"search and paging",
 			domain.ListFilter{Query: "x", Limit: 5, Offset: 10},
-			`ILIKE \$1\) ORDER BY id LIMIT \$2 OFFSET \$3$`,
+			`ILIKE \$1 ESCAPE '\\'\) ORDER BY id LIMIT \$2 OFFSET \$3$`,
 		},
 	}
 

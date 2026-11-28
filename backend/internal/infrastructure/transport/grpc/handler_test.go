@@ -27,6 +27,8 @@ type stubRepo struct {
 	notes  map[int64]*domain.Note
 	nextID int64
 	fail   error
+	// lastFilter is the filter the most recent List call received.
+	lastFilter domain.ListFilter
 }
 
 func newStubRepo() *stubRepo {
@@ -77,6 +79,7 @@ func (s *stubRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *stubRepo) List(ctx context.Context, f domain.ListFilter) ([]*domain.Note, error) {
+	s.lastFilter = f
 	if s.fail != nil {
 		return nil, s.fail
 	}
@@ -237,7 +240,7 @@ func TestListNotesClampsPaging(t *testing.T) {
 		{"empty request", &proto.ListNotesRequest{}},
 		{"limit above max", &proto.ListNotesRequest{Limit: 10000}},
 		{"negative limit", &proto.ListNotesRequest{Limit: -5}},
-		{"offset above max", &proto.ListNotesRequest{Offset: 99999}},
+		{"large offset", &proto.ListNotesRequest{Offset: 99999}},
 		{"query set", &proto.ListNotesRequest{Query: "report"}},
 	}
 
@@ -251,6 +254,28 @@ func TestListNotesClampsPaging(t *testing.T) {
 				t.Error("notes = nil, want an empty slice")
 			}
 		})
+	}
+}
+
+// Offset is not capped at the page limit: a cap froze paging at row 200.
+func TestListNotesPassesLargeOffset(t *testing.T) {
+	cases := []struct {
+		offset int32
+		want   int
+	}{
+		{500, 500},
+		{99999, 99999},
+		{-3, 0},
+	}
+	for _, tc := range cases {
+		repo := newStubRepo()
+		h := newTestHandler(repo)
+		if _, err := h.ListNotes(context.Background(), &proto.ListNotesRequest{Offset: tc.offset}); err != nil {
+			t.Fatalf("ListNotes(offset=%d): %v", tc.offset, err)
+		}
+		if repo.lastFilter.Offset != tc.want {
+			t.Errorf("offset %d reached the repository as %d, want %d", tc.offset, repo.lastFilter.Offset, tc.want)
+		}
 	}
 }
 

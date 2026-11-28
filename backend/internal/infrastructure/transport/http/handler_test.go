@@ -24,6 +24,8 @@ type stubRepo struct {
 	notes  map[int64]*domain.Note
 	nextID int64
 	fail   error
+	// lastFilter is the filter the most recent List call received.
+	lastFilter domain.ListFilter
 }
 
 func newStubRepo() *stubRepo {
@@ -75,6 +77,7 @@ func (s *stubRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *stubRepo) List(ctx context.Context, f domain.ListFilter) ([]*domain.Note, error) {
+	s.lastFilter = f
 	if s.fail != nil {
 		return nil, s.fail
 	}
@@ -312,6 +315,30 @@ func TestDeleteNote(t *testing.T) {
 }
 
 func TestListNotes(t *testing.T) {
+	// Offset used to be capped at maxListLimit (200), so with 50-note pages
+	// every request past offset 200 returned the same page: notes beyond ~250
+	// were unreachable and the client appended duplicates forever.
+	t.Run("offset beyond the page limit reaches the repository", func(t *testing.T) {
+		repo := newStubRepo()
+		rec := do(t, newTestServer(repo), http.MethodGet, "/notes?limit=50&offset=500", "")
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		if repo.lastFilter.Offset != 500 {
+			t.Errorf("offset = %d, want 500", repo.lastFilter.Offset)
+		}
+	})
+
+	t.Run("negative offset is clamped to zero", func(t *testing.T) {
+		repo := newStubRepo()
+		do(t, newTestServer(repo), http.MethodGet, "/notes?offset=-7", "")
+
+		if repo.lastFilter.Offset != 0 {
+			t.Errorf("offset = %d, want 0", repo.lastFilter.Offset)
+		}
+	})
+
 	t.Run("empty store encodes [] not null", func(t *testing.T) {
 		rec := do(t, newTestServer(newStubRepo()), http.MethodGet, "/notes", "")
 

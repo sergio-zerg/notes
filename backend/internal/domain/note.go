@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -25,8 +26,12 @@ type Note struct {
 // Validate enforces the note's invariants. It returns an error wrapping
 // ErrInvalidInput so that transports can map it to their own status codes
 // without duplicating the rules.
+//
+// Both fields are measured after trimming surrounding whitespace, exactly as the
+// Flutter client measures them: otherwise a title of three spaces passes here
+// while the client calls it empty, and the server is the more permissive side.
 func (n *Note) Validate() error {
-	title := n.Title
+	title := strings.TrimSpace(n.Title)
 	switch length := utf8.RuneCountInString(title); {
 	case length == 0:
 		return fmt.Errorf("%w: title is required", ErrInvalidInput)
@@ -36,7 +41,7 @@ func (n *Note) Validate() error {
 		return fmt.Errorf("%w: title must be at most %d characters", ErrInvalidInput, MaxTitleLength)
 	}
 
-	if n.Content == "" {
+	if strings.TrimSpace(n.Content) == "" {
 		return fmt.Errorf("%w: content is required", ErrInvalidInput)
 	}
 

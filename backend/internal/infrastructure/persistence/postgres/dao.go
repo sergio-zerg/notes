@@ -6,7 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"notes/internal/domain"
+	"strings"
 )
+
+// likeEscaper makes a search term match literally inside ILIKE. Without it a
+// query of "50%" or "a_b" is read as a pattern: % and _ match any run of
+// characters or any single character, so the search returns rows the user did
+// not ask for. The backslash is escaped first so it cannot neutralise the rest.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 type NoteDAO struct {
 	db *sql.DB
@@ -93,8 +100,8 @@ func (dao *NoteDAO) SelectAll(ctx context.Context, filter domain.ListFilter) ([]
 
 	query := columns
 	if filter.Query != "" {
-		query += ` WHERE (title ILIKE $1 OR content ILIKE $1)`
-		args = append(args, "%"+filter.Query+"%")
+		query += ` WHERE (title ILIKE $1 ESCAPE '\' OR content ILIKE $1 ESCAPE '\')`
+		args = append(args, "%"+likeEscaper.Replace(filter.Query)+"%")
 		argCount++
 	}
 

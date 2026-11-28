@@ -93,9 +93,12 @@ func (h *NoteHandler) DeleteNote(ctx context.Context, req *proto.DeleteNoteReque
 func (h *NoteHandler) ListNotes(ctx context.Context, req *proto.ListNotesRequest) (*proto.ListNotesResponse, error) {
 	// The request's paging and search fields are honoured rather than dropped.
 	filter := domain.ListFilter{
-		Query:  req.GetQuery(),
-		Limit:  clampInt(int(req.GetLimit()), 1, maxListLimit, defaultListLimit),
-		Offset: clampInt(int(req.GetOffset()), 0, maxListLimit, 0),
+		Query: req.GetQuery(),
+		Limit: clampInt(int(req.GetLimit()), 1, maxListLimit, defaultListLimit),
+		// Offset has a lower bound only: capping it at maxListLimit froze
+		// paging at row 200 (see the REST handler). The field is int32, so it
+		// cannot overflow int.
+		Offset: max(int(req.GetOffset()), 0),
 	}
 
 	notes, err := h.service.ListNotes(ctx, filter)
