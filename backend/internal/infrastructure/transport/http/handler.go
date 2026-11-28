@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -166,7 +167,11 @@ func (h *NoteHandler) List(w http.ResponseWriter, r *http.Request) {
 		filter.Limit = clampInt(l, 1, maxListLimit, defaultListLimit)
 	}
 	if o := r.URL.Query().Get("offset"); o != "" {
-		filter.Offset = clampInt(o, 0, maxListLimit, 0)
+		// Only the lower bound is clamped. Capping offset at maxListLimit (as
+		// limit is capped) froze paging at row 200: every later page request
+		// was answered with the same page, so notes past ~250 were unreachable
+		// and the client, seeing full pages, kept appending duplicates.
+		filter.Offset = clampInt(o, 0, maxListOffset, 0)
 	}
 
 	notes, err := h.service.ListNotes(r.Context(), filter)
@@ -186,6 +191,8 @@ func (h *NoteHandler) List(w http.ResponseWriter, r *http.Request) {
 const (
 	defaultListLimit = 50
 	maxListLimit     = 200
+	// maxListOffset only guards against overflow; it is not a paging limit.
+	maxListOffset = math.MaxInt32
 )
 
 // noteID extracts the id path variable. The router pattern already restricts
